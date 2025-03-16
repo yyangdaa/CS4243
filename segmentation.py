@@ -13,11 +13,16 @@ original_image = None
 
 
 def load_image(filename):
+    if not os.path.exists(filename):
+        print(f"Error: File {filename} not found.")
+        sys.exit(1)
+
     image = cv2.imread(filename)
     if image is None:
-        print("Error: Could not load image.")
+        print(f"Error: Unable to load image {filename}. Check file format and integrity.")
         sys.exit(1)
     return image
+
 
 
 def convert_to_grayscale(image):
