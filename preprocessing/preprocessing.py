@@ -2,17 +2,29 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import cv2
+import numpy as np
 
 def preprocess_image(img_path):
     # Load image
-    img = cv2.imread(img_path, 0)
+    img = cv2.imread(img_path)
+
+    # Convert to HSV
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
     # Obtain line mask of interference lines
-    _, line_mask = cv2.threshold(img, 1, 255, cv2.THRESH_BINARY_INV)
+    mask = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([255, 255, 5]))
 
-    # Remove interference lines
-    result = img.copy()
-    result[line_mask == 255] = 255
+    # Replace interference lines with median
+    h, s, v = cv2.split(hsv)
+    h_med, s_med, v_med = [cv2.medianBlur(c, 5) for c in cv2.split(hsv)]
+    h_new = cv2.bitwise_and(h, h, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(h_med, h_med, mask=mask)
+    s_new = cv2.bitwise_and(s, s, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(s_med, s_med, mask=mask)
+    v_new = cv2.bitwise_and(v, v, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(v_med, v_med, mask=mask)
+
+    # Convert to gray
+    hsv_new = cv2.merge([h_new, s_new, v_new])
+    img_new = cv2.cvtColor(hsv_new, cv2.COLOR_HSV2BGR)
+    result = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
 
     # Sharpen image before binarization
     blurred = cv2.GaussianBlur(result, (0, 0), 3)
