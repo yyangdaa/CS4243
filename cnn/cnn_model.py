@@ -3,9 +3,6 @@ import cv2
 import numpy as np
 from scipy import signal
 
-###############################################################################
-# 1) Layer base class
-###############################################################################
 class Layer:
     def __init__(self):
         self.input = None
@@ -17,10 +14,6 @@ class Layer:
     def backward(self, output_gradient, learning_rate):
         raise NotImplementedError
 
-
-###############################################################################
-# 2) Activation base + ReLU / Softmax
-###############################################################################
 class Activation(Layer):
     def __init__(self, activation, activation_prime):
         super().__init__()
@@ -61,10 +54,6 @@ class Softmax(Layer):
         jacobian = np.diag(self.output.flatten()) - np.outer(self.output, self.output)
         return np.dot(jacobian, output_gradient)
 
-
-###############################################################################
-# 3) Dense layer
-###############################################################################
 class Dense(Layer):
     def __init__(self, input_size, output_size):
         super().__init__()
@@ -89,10 +78,6 @@ class Dense(Layer):
         self.bias -= learning_rate * output_gradient
         return input_gradient
 
-
-###############################################################################
-# 4) Convolutional layer
-###############################################################################
 class Convolutional(Layer):
     def __init__(self, input_shape, kernel_size, depth):
         """
@@ -155,10 +140,6 @@ class Convolutional(Layer):
         self.biases -= learning_rate * output_gradient
         return input_gradient
 
-
-###############################################################################
-# 5) MaxPooling2D layer
-###############################################################################
 class MaxPooling2D(Layer):
     def __init__(self, input_shape, pool_size=2):
         """
@@ -226,10 +207,6 @@ class MaxPooling2D(Layer):
 
         return input_gradient
 
-
-###############################################################################
-# 6) Reshape layer
-###############################################################################
 class Reshape(Layer):
     def __init__(self, input_shape, output_shape):
         super().__init__()
@@ -243,10 +220,6 @@ class Reshape(Layer):
     def backward(self, output_gradient, learning_rate):
         return np.reshape(output_gradient, self.input_shape)
 
-
-###############################################################################
-# 7) Loss functions (categorical cross-entropy)
-###############################################################################
 def categorical_cross_entropy(y_true, y_pred):
     eps = 1e-12
     y_pred_clipped = np.clip(y_pred, eps, 1 - eps)
@@ -257,10 +230,6 @@ def categorical_cross_entropy_prime(y_true, y_pred):
     y_pred_clipped = np.clip(y_pred, eps, 1 - eps)
     return - (y_true / y_pred_clipped)
 
-
-###############################################################################
-# 8) Data loader for segmented CAPTCHA images
-###############################################################################
 CHARSET = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 def char_to_label(ch):
@@ -322,13 +291,8 @@ def load_segmented_images(folder_path):
     Y = np.array(Y_list)
     return X, Y
 
-
-###############################################################################
-# 9) Building an improved CNN
-###############################################################################
 def build_improved_cnn_model(num_classes=36):
     """
-    Example CNN:
     - Conv( (1,28,28), kernel=3, depth=8 ) -> ReLU -> MaxPool(2x2) -> shape ~ (8, 13, 13)
     - Conv( (8,13,13), kernel=3, depth=16 ) -> ReLU -> MaxPool(2x2) -> shape ~ (16, 6, 6)
     - Reshape -> Dense(16*6*6, 128) -> ReLU -> Dense(128, num_classes) -> Softmax
@@ -359,9 +323,6 @@ def build_improved_cnn_model(num_classes=36):
     return model
 
 
-###############################################################################
-# 10) Prediction and Mini-batch Training
-###############################################################################
 def predict(network, input):
     output = input
     for layer in network:
@@ -414,10 +375,6 @@ def train(
         if verbose:
             print(f"Epoch {epoch+1}/{epochs}, loss={avg_error:.4f}")
 
-
-###############################################################################
-# 11) Main script: load data, build model, train, evaluate
-###############################################################################
 def main():
     segment_folder = "../output_segments/segmented"  # change as needed
     X, Y = load_segmented_images(segment_folder)
