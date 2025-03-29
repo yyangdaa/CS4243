@@ -336,8 +336,8 @@ def train(
     x_train,
     y_train,
     epochs=10,
-    learning_rate=0.01,
-    batch_size=32,
+    learning_rate=0.05,
+    batch_size=64,
     verbose=True
 ):
     """
@@ -407,7 +407,7 @@ def main():
         categorical_cross_entropy_prime,
         X_train,
         Y_train,
-        epochs=10,          # try even higher, like 20 or 30
+        epochs=30,          # try even higher, like 20 or 30
         learning_rate=0.01, # tune the LR if needed
         batch_size=32,
         verbose=True
