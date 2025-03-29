@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from scipy import signal
+from collections import defaultdict
 
 class Layer:
     def __init__(self):
@@ -27,7 +28,6 @@ class Activation(Layer):
     def backward(self, output_gradient, learning_rate):
         return output_gradient * self.activation_prime(self.input)
 
-
 # ReLU activation
 class ReLU(Activation):
     def __init__(self):
@@ -36,7 +36,6 @@ class ReLU(Activation):
         def relu_prime(x):
             return (x > 0).astype(x.dtype)  # derivative is 1 where x>0, else 0
         super().__init__(relu, relu_prime)
-
 
 class Softmax(Layer):
     def forward(self, input):
@@ -48,9 +47,6 @@ class Softmax(Layer):
 
     def backward(self, output_gradient, learning_rate):
         # Jacobian of Softmax
-        # output_gradient shape: (num_classes, 1)
-        n = np.size(self.output)
-        # diag - outer product
         jacobian = np.diag(self.output.flatten()) - np.outer(self.output, self.output)
         return np.dot(jacobian, output_gradient)
 
@@ -67,12 +63,8 @@ class Dense(Layer):
         return np.dot(self.weights, self.input) + self.bias
 
     def backward(self, output_gradient, learning_rate):
-        # output_gradient shape: (output_size, 1)
-        # input shape: (input_size, 1)
-        # weights shape: (output_size, input_size)
         weights_gradient = np.dot(output_gradient, self.input.T)
         input_gradient = np.dot(self.weights.T, output_gradient)
-
         # Update
         self.weights -= learning_rate * weights_gradient
         self.bias -= learning_rate * output_gradient
@@ -116,7 +108,6 @@ class Convolutional(Layer):
         return self.output
 
     def backward(self, output_gradient, learning_rate):
-        # Prepare gradients
         kernels_gradient = np.zeros_like(self.kernels)
         input_gradient = np.zeros_like(self.input)
 
@@ -240,9 +231,11 @@ def load_segmented_images(folder_path):
     Returns:
       X: numpy array (N, 1, 28, 28)
       Y: numpy array (N, 36, 1) one-hot
+      meta: list of dictionaries containing 'captcha_str' and 'char_index'
     """
     X_list = []
     Y_list = []
+    meta_list = []
 
     for filename in os.listdir(folder_path):
         if not filename.lower().endswith(".png"):
@@ -286,16 +279,17 @@ def load_segmented_images(folder_path):
 
         X_list.append(img)
         Y_list.append(label_arr)
+        meta_list.append({"captcha_str": captcha_str, "char_index": char_index})
 
     X = np.array(X_list)
     Y = np.array(Y_list)
-    return X, Y
+    return X, Y, meta_list
 
 def build_improved_cnn_model(num_classes=36):
     """
-    - Conv( (1,28,28), kernel=3, depth=8 ) -> ReLU -> MaxPool(2x2) -> shape ~ (8, 13, 13)
-    - Conv( (8,13,13), kernel=3, depth=16 ) -> ReLU -> MaxPool(2x2) -> shape ~ (16, 6, 6)
-    - Reshape -> Dense(16*6*6, 128) -> ReLU -> Dense(128, num_classes) -> Softmax
+    - Conv( (1,28,28), kernel=3, depth=8 ) -> ReLU -> MaxPool(2x2) -> shape ~ (8, 26, 26) -> after pooling: (8, 13, 13)
+    - Conv( (8,13,13), kernel=3, depth=16 ) -> ReLU -> MaxPool(2x2) -> shape ~ (16, 11, 11) -> after pooling: (16, 5, 5)
+    - Reshape -> Dense(16*5*5, 128) -> ReLU -> Dense(128, num_classes) -> Softmax
     """
     model = []
     # 1) Conv -> ReLU -> MaxPool
@@ -307,8 +301,7 @@ def build_improved_cnn_model(num_classes=36):
     model.append(Convolutional((8, 13, 13), kernel_size=3, depth=16))
     model.append(ReLU())
     model.append(MaxPooling2D(input_shape=(16, 11, 11), pool_size=2))
-    # shape after second MaxPool: (16, 5, 5) 
-    # (Actually 11//2=5 if integer division, so final shape is (16,5,5).)
+    # After second MaxPool, shape is (16, 5, 5)
 
     # 3) Flatten
     model.append(Reshape((16, 5, 5), (16*5*5, 1)))  # 16*25=400
@@ -321,7 +314,6 @@ def build_improved_cnn_model(num_classes=36):
     model.append(Dense(128, num_classes))
     model.append(Softmax())
     return model
-
 
 def predict(network, input):
     output = input
@@ -377,7 +369,7 @@ def train(
 
 def main():
     segment_folder = "../output_segments/segmented"  # change as needed
-    X, Y = load_segmented_images(segment_folder)
+    X, Y, meta = load_segmented_images(segment_folder)
 
     if len(X) == 0:
         print("No valid segmented images found. Check folder or filenames.")
@@ -388,11 +380,12 @@ def main():
     np.random.shuffle(indices)
     X = X[indices]
     Y = Y[indices]
+    meta = [meta[i] for i in indices]
 
     # Train/test split
     split = int(0.8 * len(X))
-    X_train, Y_train = X[:split], Y[:split]
-    X_test,  Y_test  = X[split:], Y[split:]
+    X_train, Y_train, meta_train = X[:split], Y[:split], meta[:split]
+    X_test, Y_test, meta_test = X[split:], Y[split:], meta[split:]
 
     print(f"Loaded {len(X)} samples.")
     print(f"Training on {len(X_train)} samples, testing on {len(X_test)} samples.")
@@ -413,7 +406,7 @@ def main():
         verbose=True
     )
 
-    # Evaluate
+    # Evaluate Character Accuracy
     correct = 0
     for i in range(len(X_test)):
         y_pred = predict(model, X_test[i])
@@ -421,8 +414,33 @@ def main():
         true_label = np.argmax(Y_test[i])
         if pred_label == true_label:
             correct += 1
-    accuracy = correct / len(X_test) * 100
-    print(f"Test Accuracy: {accuracy:.2f}%")
+    char_accuracy = correct / len(X_test) * 100
+    print(f"Character Accuracy: {char_accuracy:.2f}%")
+
+    # Evaluate String Accuracy by grouping predictions by captcha string
+    captcha_predictions = defaultdict(dict)
+    captcha_true = {}
+    for i, meta_item in enumerate(meta_test):
+        captcha_str = meta_item["captcha_str"]
+        char_index = meta_item["char_index"]
+        y_pred = predict(model, X_test[i])
+        pred_char = CHARSET[np.argmax(y_pred)]
+        captcha_predictions[captcha_str][char_index] = pred_char
+        captcha_true[captcha_str] = captcha_str
+
+    string_correct = 0
+    for captcha_str, pred_dict in captcha_predictions.items():
+        # Assemble predicted captcha string using sorted character indices
+        try:
+            predicted = ''.join(pred_dict[i] for i in range(len(captcha_str)))
+        except KeyError:
+            # If a character index is missing, consider it an incorrect prediction
+            predicted = ""
+        if predicted == captcha_str:
+            string_correct += 1
+
+    string_accuracy = string_correct / len(captcha_true) * 100
+    print(f"String Accuracy: {string_accuracy:.2f}%")
 
 if __name__ == "__main__":
     main()
