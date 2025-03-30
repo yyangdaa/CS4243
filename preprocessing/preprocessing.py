@@ -11,19 +11,33 @@ def preprocess_image(img_path):
     # Convert to HSV
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    # Obtain line mask of interference lines
+    # Find interference lines as mask 
     mask = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([255, 255, 5]))
 
-    # Replace interference lines with median
-    h, s, v = cv2.split(hsv)
-    h_med, s_med, v_med = [cv2.medianBlur(c, 5) for c in cv2.split(hsv)]
-    h_new = cv2.bitwise_and(h, h, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(h_med, h_med, mask=mask)
-    s_new = cv2.bitwise_and(s, s, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(s_med, s_med, mask=mask)
-    v_new = cv2.bitwise_and(v, v, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(v_med, v_med, mask=mask)
+    # Find coloured regions as mask
+    col = cv2.bitwise_not(cv2.inRange(hsv, np.array([0, 0, 250]), np.array([180, 50, 255])))
+    col = cv2.bitwise_and(col, cv2.bitwise_not(mask))
+
+    # Find intersection of regions
+    inter = cv2.dilate(col, np.ones((3, 3), np.uint8), iterations=1)
+    inter = cv2.bitwise_and(inter, mask)
+    non_inter = cv2.bitwise_and(mask, cv2.bitwise_not(inter))
+
+    # Remove non-intersection sections
+    img_new = img.copy()
+    img_new[non_inter > 0] = 255
+
+    # Create median filter
+    b, g, r = cv2.split(img_new)
+    b_med, g_med, r_med = [cv2.medianBlur(c, 5) for c in cv2.split(img_new)]
+
+    # Apply median filter on interference line pixels only
+    b_new = np.where(inter == 0, b, b_med)
+    g_new = np.where(inter == 0, g, g_med)
+    r_new = np.where(inter == 0, r, r_med)
 
     # Convert to gray
-    hsv_new = cv2.merge([h_new, s_new, v_new])
-    img_new = cv2.cvtColor(hsv_new, cv2.COLOR_HSV2BGR)
+    img_new = cv2.merge([b_new, g_new, r_new])
     result = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
 
     # Sharpen image before binarization
