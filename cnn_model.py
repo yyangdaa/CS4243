@@ -4,6 +4,7 @@ import random
 import numpy as np
 from scipy import signal
 from collections import defaultdict
+from tqdm import tqdm  # progress bar import
 
 # ===================== CONFIGURATION =====================
 # Dataset
@@ -320,21 +321,25 @@ def predict(network, input):
         output = layer.forward(output)
     return output
 
+# ------------------------- MODIFIED TRAIN FUNCTION -------------------------
 def train(network, loss_func, loss_prime_func, x_train, y_train,
-          epochs=10, learning_rate=0.05, batch_size=64, verbose=True):
+          x_val=None, y_val=None, meta_val=None, epochs=10, learning_rate=0.05, batch_size=64, verbose=True):
     """
     Simple mini-batch training:
       - Shuffle dataset
       - Split into batches
       - For each batch, perform forward+backward on each sample
+    Additionally, if validation data is provided (x_val, y_val, meta_val), the function
+    computes and prints character and string accuracy at the end of each epoch.
     """
     n_samples = len(x_train)
     for epoch in range(epochs):
         indices = np.arange(n_samples)
         np.random.shuffle(indices)
-
         total_error = 0.0
-        for start_idx in range(0, n_samples, batch_size):
+        
+        # Display progress bar for each batch
+        for start_idx in tqdm(range(0, n_samples, batch_size), desc=f"Epoch {epoch+1}/{epochs}"):
             end_idx = start_idx + batch_size
             batch_inds = indices[start_idx:end_idx]
 
@@ -350,6 +355,44 @@ def train(network, loss_func, loss_prime_func, x_train, y_train,
         avg_error = total_error / n_samples
         if verbose:
             print(f"Epoch {epoch+1}/{epochs}, loss={avg_error:.4f}")
+
+        # ----------- New code: compute validation accuracy -------------
+        if x_val is not None and y_val is not None and meta_val is not None:
+            # Compute Character Accuracy
+            correct = 0
+            for i in range(len(x_val)):
+                y_pred = predict(network, x_val[i])
+                pred_label = np.argmax(y_pred)
+                true_label = np.argmax(y_val[i])
+                if pred_label == true_label:
+                    correct += 1
+            char_accuracy = correct / len(x_val) * 100
+
+            # Compute String Accuracy (Captcha prediction)
+            captcha_predictions = defaultdict(dict)
+            captcha_true = {}
+            for i, meta_item in enumerate(meta_val):
+                captcha_str = meta_item["captcha_str"]
+                char_index = meta_item["char_index"]
+                y_pred = predict(network, x_val[i])
+                pred_char = CHARSET[np.argmax(y_pred)]
+                captcha_predictions[captcha_str][char_index] = pred_char
+                captcha_true[captcha_str] = captcha_str
+
+            string_correct = 0
+            for c_str, pred_dict in captcha_predictions.items():
+                try:
+                    predicted = ''.join(pred_dict[i] for i in range(len(c_str)))
+                except KeyError:
+                    predicted = ""
+                if predicted == c_str:
+                    string_correct += 1
+
+            string_accuracy = string_correct / len(captcha_true) * 100
+
+            if verbose:
+                print(f"Validation - Char Accuracy: {char_accuracy:.2f}% | String Accuracy: {string_accuracy:.2f}%")
+# ----------------------------------------------------------------------------
 
 def main():
     # Load and shuffle dataset
@@ -375,20 +418,24 @@ def main():
     # Build CNN with specified dense units
     model = build_improved_cnn_model(num_classes=len(CHARSET), dense_units=DENSE_UNITS)
 
-    # Train the model using configuration parameters
+    # Train the model using configuration parameters.
+    # To show validation accuracy (character and string), we pass X_test, Y_test, and meta_test.
     train(
         model,
         categorical_cross_entropy,
         categorical_cross_entropy_prime,
         X_train,
         Y_train,
+        x_val=X_test,
+        y_val=Y_test,
+        meta_val=meta_test,
         epochs=EPOCHS,
         learning_rate=LEARNING_RATE,
         batch_size=BATCH_SIZE,
         verbose=VERBOSE
     )
 
-    # Evaluate Character Accuracy
+    # Final Evaluation (can be omitted if you prefer the per-epoch results)
     correct = 0
     for i in range(len(X_test)):
         y_pred = predict(model, X_test[i])
@@ -397,9 +444,8 @@ def main():
         if pred_label == true_label:
             correct += 1
     char_accuracy = correct / len(X_test) * 100
-    print(f"Character Accuracy: {char_accuracy:.2f}%")
+    print(f"Final Character Accuracy: {char_accuracy:.2f}%")
 
-    # Evaluate String Accuracy (Captcha prediction)
     captcha_predictions = defaultdict(dict)
     captcha_true = {}
     for i, meta_item in enumerate(meta_test):
@@ -420,7 +466,7 @@ def main():
             string_correct += 1
 
     string_accuracy = string_correct / len(captcha_true) * 100
-    print(f"String Accuracy: {string_accuracy:.2f}%")
+    print(f"Final String Accuracy: {string_accuracy:.2f}%")
 
 if __name__ == "__main__":
     main()
