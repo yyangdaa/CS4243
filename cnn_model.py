@@ -194,7 +194,7 @@ class Reshape(Layer):
     def forward(self, input):
         self.input = input
         return np.reshape(input, self.output_shape)
-
+ 
     def backward(self, output_gradient, learning_rate):
         return np.reshape(output_gradient, self.input_shape)
 
