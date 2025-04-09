@@ -16,6 +16,7 @@ class Layer:
     def backward(self, output_gradient, learning_rate):
         raise NotImplementedError
 
+
 ###############################################################################
 # 2) Activation base + ReLU / Softmax
 ############################################################################### 
@@ -30,6 +31,7 @@ class Activation(Layer):
     def backward(self, output_gradient, learning_rate):
         return output_gradient * self.activation_prime(self.input)
 
+
 # ReLU activation
 class ReLU(Activation):
     def __init__(self):
@@ -38,6 +40,7 @@ class ReLU(Activation):
         def relu_prime(x):
             return (x > 0).astype(x.dtype)  # derivative is 1 where x>0, else 0
         super().__init__(relu, relu_prime)
+
 
 class Softmax(Layer):
     def forward(self, input):
@@ -52,74 +55,29 @@ class Softmax(Layer):
         jacobian = np.diag(self.output.flatten()) - np.outer(self.output, self.output)
         return np.dot(jacobian, output_gradient)
 
-###############################################################################
-# NEW: Dropout layer to help prevent overfitting.
-###############################################################################
-class Dropout(Layer):
-    def __init__(self, dropout_rate):
-        super().__init__()
-        self.dropout_rate = dropout_rate  # e.g., 0.5 drops 50% of the neurons.
-        self.mask = None
-
-    def forward(self, input, training=True):
-        self.input = input
-        if training:
-            # Generate a binary mask with probability (1 - dropout_rate) for keeping units.
-            self.mask = np.random.binomial(1, 1 - self.dropout_rate, size=input.shape)
-            return input * self.mask
-        else:
-            # At inference time, scale the activations.
-            return input * (1 - self.dropout_rate)
-
-    def backward(self, output_gradient, learning_rate):
-        # Only propagate gradients from the neurons that were kept during the forward pass.
-        return output_gradient * self.mask
 
 ###############################################################################
-# 3) Dense layer with mini-batch gradient accumulation
+# 3) Dense layer
 ###############################################################################
 class Dense(Layer):
     def __init__(self, input_size, output_size):
         super().__init__()
+        # weights: (output_size, input_size)
         self.weights = np.random.randn(output_size, input_size) * 0.01
+        # bias: (output_size, 1)
         self.bias = np.zeros((output_size, 1))
-        # Initialize accumulators for mini-batch updates.
-        self.reset_accumulators()
 
-    def reset_accumulators(self):
-        self.batch_weights_grad = np.zeros_like(self.weights)
-        self.batch_bias_grad = np.zeros_like(self.bias)
-        
     def forward(self, input):
         self.input = input
         return np.dot(self.weights, self.input) + self.bias
 
-    def backward_accumulate(self, output_gradient):
-        # Compute gradients for the current sample.
-        weights_grad = np.dot(output_gradient, self.input.T)
-        bias_grad = output_gradient  # assuming bias gradient is just output_gradient
-
-        # Accumulate gradients.
-        self.batch_weights_grad += weights_grad
-        self.batch_bias_grad += bias_grad
-
-        # Return gradient w.r.t input to propagate backwards.
-        input_gradient = np.dot(self.weights.T, output_gradient)
-        return input_gradient
-
-    def update_parameters(self, learning_rate, batch_size):
-        # Update parameters using the averaged gradients.
-        self.weights -= learning_rate * (self.batch_weights_grad / batch_size)
-        self.bias -= learning_rate * (self.batch_bias_grad / batch_size)
-        self.reset_accumulators()
-
-    # Keep the old backward method for per-sample updates if needed.
     def backward(self, output_gradient, learning_rate):
         weights_gradient = np.dot(output_gradient, self.input.T)
         input_gradient = np.dot(self.weights.T, output_gradient)
         self.weights -= learning_rate * weights_gradient
         self.bias -= learning_rate * output_gradient
         return input_gradient
+
 
 ###############################################################################
 # 4) Convolutional layer
@@ -174,6 +132,7 @@ class Convolutional(Layer):
         self.biases -= learning_rate * output_gradient
         return input_gradient
 
+
 ###############################################################################
 # 5) MaxPooling2D layer
 ###############################################################################
@@ -222,6 +181,7 @@ class MaxPooling2D(Layer):
                     input_gradient[depth_idx, orig_i, orig_j] += grad_val
         return input_gradient
 
+
 ###############################################################################
 # 6) Reshape layer
 ###############################################################################
@@ -238,6 +198,7 @@ class Reshape(Layer):
     def backward(self, output_gradient, learning_rate):
         return np.reshape(output_gradient, self.input_shape)
 
+
 ###############################################################################
 # 7) Loss functions (categorical cross-entropy)
 ###############################################################################
@@ -250,6 +211,7 @@ def categorical_cross_entropy_prime(y_true, y_pred):
     eps = 1e-12
     y_pred_clipped = np.clip(y_pred, eps, 1 - eps)
     return - (y_true / y_pred_clipped)
+
 
 ###############################################################################
 # 8) Data loader for segmented CAPTCHA images
@@ -297,8 +259,9 @@ def load_segmented_images(folder_path):
     Y = np.array(Y_list)
     return X, Y, captcha_info
 
+
 ###############################################################################
-# 9) Building an improved CNN (with Dropout added)
+# 9) Building an improved CNN
 ###############################################################################
 def build_improved_cnn_model(num_classes=36):
     model = []
@@ -311,10 +274,10 @@ def build_improved_cnn_model(num_classes=36):
     model.append(Reshape((16, 5, 5), (16*5*5, 1)))
     model.append(Dense(400, 128))
     model.append(ReLU())
-    model.append(Dropout(0.5))  # Dropout with 50% drop rate added here.
     model.append(Dense(128, num_classes))
     model.append(Softmax())
     return model
+
 
 ###############################################################################
 # 10) Prediction and Mini-batch Training
@@ -322,67 +285,33 @@ def build_improved_cnn_model(num_classes=36):
 def predict(network, input):
     output = input
     for layer in network:
-        # Use the training flag as False for inference
-        if isinstance(layer, Dropout):
-            output = layer.forward(output, training=False)
-        else:
-            output = layer.forward(output)
+        output = layer.forward(output)
     return output
 
-def train_mini_batch(network, loss_func, loss_prime_func, x_train, y_train,
-                     captcha_info_train, epochs=10, learning_rate=0.01, batch_size=32, verbose=True):
+def train(network, loss_func, loss_prime_func, x_train, y_train, captcha_info_train, epochs=10, learning_rate=0.01, batch_size=32, verbose=True):
     n_samples = len(x_train)
     for epoch in range(epochs):
-        # Shuffle indices at the start of each epoch.
         indices = np.arange(n_samples)
         np.random.shuffle(indices)
-        total_loss = 0.0
-
+        total_error = 0.0
+        # Mini-batch training with a progress bar:
         for start_idx in tqdm(range(0, n_samples, batch_size), desc=f"Epoch {epoch+1}/{epochs}"):
             end_idx = start_idx + batch_size
             batch_inds = indices[start_idx:end_idx]
-            # Reset gradient accumulators for each parameterized layer.
-            for layer in network:
-                if hasattr(layer, 'reset_accumulators'):
-                    layer.reset_accumulators()
-
-            # Process each sample in the mini-batch.
             for i in batch_inds:
                 x = x_train[i]
                 y = y_train[i]
-
-                # Forward pass.
-                output = x
-                for layer in network:
-                    # For layers like Dropout that use a training flag.
-                    if isinstance(layer, Dropout):
-                        output = layer.forward(output, training=True)
-                    else:
-                        output = layer.forward(output)
-
-                loss = loss_func(y, output)
-                total_loss += loss
-
-                # Compute initial gradient from loss and then backpropagate.
+                output = predict(network, x)
+                total_error += loss_func(y, output)
                 grad = loss_prime_func(y, output)
                 for layer in reversed(network):
-                    # Instead of updating weights immediately, accumulate gradients.
-                    if hasattr(layer, 'backward_accumulate'):
-                        grad = layer.backward_accumulate(grad)
-                    else:
-                        # For layers without learnable parameters (or if you haven't implemented accumulation), use the old backward.
-                        grad = layer.backward(grad, learning_rate)
-
-            # End of mini-batch: update parameters for layers that support mini-batch updates.
-            for layer in network:
-                if hasattr(layer, 'update_parameters'):
-                    layer.update_parameters(learning_rate, len(batch_inds))
-
-        avg_loss = total_loss / n_samples
+                    grad = layer.backward(grad, learning_rate)
+        avg_error = total_error / n_samples
         if verbose:
-            print(f"Epoch {epoch+1}/{epochs} - Average Loss: {avg_loss:.4f}")
-            # Optionally, evaluate on training data.
+            print(f"Epoch {epoch+1}/{epochs}, loss={avg_error:.4f}")
+            print("Training accuracy:")
             evaluate(network, x_train, y_train, captcha_info_train)
+
 
 ###############################################################################
 # 11) Evaluation: Compute character and string (captcha) accuracy
@@ -437,9 +366,7 @@ def main():
     print(f"Training on {len(X_train)} samples, testing on {len(X_test)} samples.")
     model = build_improved_cnn_model(num_classes=len(CHARSET))
     # Pass captcha_info_train to the train function:
-    train_mini_batch(model, categorical_cross_entropy, categorical_cross_entropy_prime, 
-                     X_train, Y_train, captcha_info_train, epochs=10, 
-                     learning_rate=0.01, batch_size=32, verbose=True)
+    train(model, categorical_cross_entropy, categorical_cross_entropy_prime, X_train, Y_train, captcha_info_train, epochs=10, learning_rate=0.01, batch_size=32, verbose=True)
     print("\nEvaluation on test set:")
     evaluate(model, X_test, Y_test, captcha_info_test)
 
