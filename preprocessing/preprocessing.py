@@ -4,26 +4,48 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 
+def medianBlur(img, ksize, mask, iterations=1):
+    """
+    Applies the median blur only to TRUE pixels within the image
+    for the given number of iterations
+    """
+    b, g, r = cv2.split(img)
+
+    for _ in range(iterations):
+        b_med, g_med, r_med = [cv2.medianBlur(c, ksize) for c in (b, g, r)]
+        b = np.where(mask, b_med, b)
+        g = np.where(mask, g_med, g)
+        r = np.where(mask, r_med, r)
+    return cv2.merge([b, g, r])
+
 def preprocess_image(img_path):
     # Load image
     img = cv2.imread(img_path)
 
-    # Convert to HSV
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    # Find interference lines as mask
+    black = np.full((1, 3), 0, dtype=np.uint8)
+    line_mask = cv2.inRange(img, black, black)
 
-    # Obtain line mask of interference lines
-    mask = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([255, 255, 5]))
+    # Find character regions as mask
+    white = np.full((1, 3), 255, dtype=np.uint8)
+    back_mask = cv2.inRange(img, white, white)
+    chr_mask = cv2.bitwise_and(cv2.bitwise_not(back_mask),
+                               cv2.bitwise_not(line_mask))
 
-    # Replace interference lines with median
-    h, s, v = cv2.split(hsv)
-    h_med, s_med, v_med = [cv2.medianBlur(c, 5) for c in cv2.split(hsv)]
-    h_new = cv2.bitwise_and(h, h, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(h_med, h_med, mask=mask)
-    s_new = cv2.bitwise_and(s, s, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(s_med, s_med, mask=mask)
-    v_new = cv2.bitwise_and(v, v, mask=cv2.bitwise_not(mask)) + cv2.bitwise_and(v_med, v_med, mask=mask)
+    # Find intersection through morphological operations
+    chr_dilate = cv2.dilate(chr_mask, np.ones((3, 3), np.uint8), iterations=1)
+    line_chr = cv2.bitwise_and(chr_dilate, line_mask)
+    line_not_chr = cv2.bitwise_and(line_mask,
+                                   cv2.bitwise_not(chr_dilate))
+
+    # Remove non-intersection regions
+    img_new = img.copy()
+    img_new[line_not_chr > 0] = 255
+
+    # Apply median filter on interference line pixels only
+    img_new = medianBlur(img_new, 3, line_chr == 255, iterations=5)
 
     # Convert to gray
-    hsv_new = cv2.merge([h_new, s_new, v_new])
-    img_new = cv2.cvtColor(hsv_new, cv2.COLOR_HSV2BGR)
     result = cv2.cvtColor(img_new, cv2.COLOR_BGR2GRAY)
 
     # Sharpen image before binarization
