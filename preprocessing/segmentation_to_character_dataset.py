@@ -3,9 +3,10 @@ import numpy as np
 from tqdm import tqdm
 import os
 
-input_folder = "modified"
-output_folder = "modified_segmented"
+input_folder = "preprocessed_images"
+output_folder = "character_dataset"
 
+indexDict = {}
 
 def segment_image(filename):
     input_path = os.path.join(input_folder, filename)
@@ -27,6 +28,11 @@ def segment_image(filename):
     if num_labels - 1 < expected_char_count:
         return 0
     
+    # Create subdirectories for each character in this image
+    for char in string_label:
+        char_dir = os.path.join(output_folder, char)
+        os.makedirs(char_dir, exist_ok=True)
+    
     components = []
 
     for label in range(1, num_labels):  # Skip background (label 0)
@@ -44,11 +50,14 @@ def segment_image(filename):
     
     components.sort(key=lambda k: k[0])
     
-    out_dir = os.path.join(output_folder, string_label)
-    os.makedirs(out_dir, exist_ok=True)
-
     for i, component in enumerate(components):
-        output_path = os.path.join(out_dir, f"char_{i}.png")
+        char_label = string_label[i]
+
+        idx = indexDict.get(char_label, 0)
+        indexDict[char_label] = indexDict.get(char_label, 0) + 1
+
+        output_path = os.path.join(output_folder, char_label, f"{char_label}_{idx:04d}.png")
+
         cv2.imwrite(output_path, component[1])
 
     return 1
