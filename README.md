@@ -161,3 +161,54 @@ We adopt a SimGAN²‑style pipeline:
 git clone https://github.com/yourusername/cs4243-captcha-recognition.git
 cd cs4243-captcha-recognition
 pip install -r requirements.txt
+```
+### Data Preparation
+
+```bash
+# 1. Clean & preprocess
+python src/preprocessing/run_cleaning.py \
+  --input data/raw --output data/cleaned
+
+# 2. (Optional) Generate synthetic data
+python src/gan/train_gan.py \
+  --real data/cleaned --out data/gan_synth
+```
+
+### Training
+
+```bash
+# Segmentation CNN
+python src/train_segmentation.py \
+  --data data/cleaned --batch 64 --epochs 50 \
+  --out models/segmentation
+
+# End-to-End CRNN
+python src/train_crnn.py \
+  --data data/cleaned --batch 32 --epochs 100 \
+  --out models/crnn
+```
+
+### Evaluation
+
+```bash
+python src/evaluate.py \
+  --model models/crnn/best.h5 \
+  --test data/test \
+  --metrics
+```
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## References
+
+1. Shi et al., “An End-to-End Trainable Neural Network for Image-based Sequence Recognition…” (2016)
+2. Shrivastava et al., “Learning from Simulated and Unsupervised Images…” (2017)
+3. SimGAN²: Wang et al., “SimGAN:…” (2018)
+4. CS4243 course slides & materials, 2025
+
