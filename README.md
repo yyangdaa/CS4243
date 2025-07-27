@@ -64,9 +64,6 @@ We design and implement a robust CAPTCHA recognition system using a deep convolu
 3. **Bounding‑box Extraction** → crop each character  
 4. **Resize & Normalize** → fit into CNN input shape  
 
-<p align="center">
-  <img src="./docs/segmentation_pipeline.png" alt="Segmentation Pipeline" width="60%"/>
-</p>
 
 ### Data Augmentation  
 - Rotations (±30°), zoom, translation (±5 px)  
@@ -101,9 +98,6 @@ Instead of explicit segmentation, we reshape CNN features into a sequence and at
 3. **Bidirectional LSTMs** → capture temporal context  
 4. **CTC Loss** → align variable‑length predictions  
 
-<p align="center">
-  <img src="./docs/crnn_architecture.png" alt="CRNN Architecture" width="60%"/>
-</p>
 
 ---
 
